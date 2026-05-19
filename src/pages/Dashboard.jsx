@@ -5,6 +5,7 @@ import Branches from './Branches';
 import Inventory from './Inventory';
 import Expiry from './Expiry';
 import Reports from './Reports';
+import Orders from './Orders';
 
 export default function Dashboard() {
   const { currentUser, userName, userRole, userBranch, logout } = useAuth();
@@ -87,9 +88,7 @@ export default function Dashboard() {
           {modules.map((mod) => (
             <button
               key={mod.id}
-              style={
-                activeModule === mod.id ? styles.navItemActive : styles.navItem
-              }
+              style={activeModule === mod.id ? styles.navItemActive : styles.navItem}
               onClick={() => setActiveModule(mod.id)}
               title={mod.label}
             >
@@ -130,30 +129,22 @@ export default function Dashboard() {
         {activeModule === 'overview' && (
           <div>
             <div style={styles.statsGrid}>
-              <div
-                style={{ ...styles.statCard, borderTop: '4px solid #0f3460' }}
-              >
+              <div style={{ ...styles.statCard, borderTop: '4px solid #0f3460' }}>
                 <p style={styles.statLabel}>Total Sales Today</p>
                 <p style={styles.statValue}>K 0.00</p>
                 <p style={styles.statSub}>Across all branches</p>
               </div>
-              <div
-                style={{ ...styles.statCard, borderTop: '4px solid #28a745' }}
-              >
+              <div style={{ ...styles.statCard, borderTop: '4px solid #28a745' }}>
                 <p style={styles.statLabel}>Total Expenses</p>
                 <p style={styles.statValue}>K 0.00</p>
                 <p style={styles.statSub}>Today</p>
               </div>
-              <div
-                style={{ ...styles.statCard, borderTop: '4px solid #e94560' }}
-              >
+              <div style={{ ...styles.statCard, borderTop: '4px solid #e94560' }}>
                 <p style={styles.statLabel}>Expiring Products</p>
                 <p style={styles.statValue}>0</p>
                 <p style={styles.statSub}>Within 150 days</p>
               </div>
-              <div
-                style={{ ...styles.statCard, borderTop: '4px solid #f39c12' }}
-              >
+              <div style={{ ...styles.statCard, borderTop: '4px solid #f39c12' }}>
                 <p style={styles.statLabel}>Pending Orders</p>
                 <p style={styles.statValue}>0</p>
                 <p style={styles.statSub}>Awaiting review</p>
@@ -166,8 +157,7 @@ export default function Dashboard() {
                 <p>🏪</p>
                 <p>No branch data yet.</p>
                 <p style={styles.emptySubtext}>
-                  Branch performance will appear here once reports are
-                  submitted.
+                  Branch performance will appear here once reports are submitted.
                 </p>
               </div>
             </div>
@@ -197,12 +187,16 @@ export default function Dashboard() {
         {/* Reports Module */}
         {activeModule === 'reports' && <Reports />}
 
+        {/* Orders Module */}
+        {activeModule === 'orders' && <Orders />}
+
         {/* Other Modules Placeholder */}
         {activeModule !== 'overview' &&
           activeModule !== 'branches' &&
           activeModule !== 'inventory' &&
           activeModule !== 'expiry' &&
-          activeModule !== 'reports' && (
+          activeModule !== 'reports' &&
+          activeModule !== 'orders' && (
             <div style={styles.comingSoon}>
               <p style={styles.comingSoonIcon}>
                 {modules.find((m) => m.id === activeModule)?.icon}
@@ -266,12 +260,7 @@ const styles = {
     borderBottom: '1px solid rgba(255,255,255,0.1)',
   },
   sidebarLogo: { fontSize: '28px' },
-  sidebarTitle: {
-    color: 'white',
-    fontWeight: '800',
-    fontSize: '18px',
-    margin: 0,
-  },
+  sidebarTitle: { color: 'white', fontWeight: '800', fontSize: '18px', margin: 0 },
   sidebarSub: { color: '#e94560', fontSize: '10px', margin: 0 },
   userCard: {
     display: 'flex',
@@ -375,12 +364,7 @@ const styles = {
     alignItems: 'flex-start',
     marginBottom: '30px',
   },
-  pageTitle: {
-    fontSize: '24px',
-    fontWeight: '800',
-    color: '#1a1a2e',
-    margin: 0,
-  },
+  pageTitle: { fontSize: '24px', fontWeight: '800', color: '#1a1a2e', margin: 0 },
   pageDate: { color: '#888', fontSize: '13px', margin: '4px 0 0' },
   alertBadge: {
     background: '#e94560',
@@ -403,12 +387,7 @@ const styles = {
     boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
   },
   statLabel: { color: '#888', fontSize: '12px', margin: '0 0 8px' },
-  statValue: {
-    color: '#1a1a2e',
-    fontSize: '28px',
-    fontWeight: '800',
-    margin: '0 0 4px',
-  },
+  statValue: { color: '#1a1a2e', fontSize: '28px', fontWeight: '800', margin: '0 0 4px' },
   statSub: { color: '#aaa', fontSize: '11px', margin: 0 },
   section: {
     background: 'white',
@@ -417,18 +396,8 @@ const styles = {
     marginBottom: '20px',
     boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
   },
-  sectionTitle: {
-    fontSize: '16px',
-    fontWeight: '700',
-    color: '#1a1a2e',
-    margin: '0 0 16px',
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '40px',
-    color: '#aaa',
-    fontSize: '14px',
-  },
+  sectionTitle: { fontSize: '16px', fontWeight: '700', color: '#1a1a2e', margin: '0 0 16px' },
+  emptyState: { textAlign: 'center', padding: '40px', color: '#aaa', fontSize: '14px' },
   emptySubtext: { fontSize: '12px', color: '#ccc' },
   comingSoon: {
     display: 'flex',
@@ -441,11 +410,6 @@ const styles = {
     boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
   },
   comingSoonIcon: { fontSize: '60px', margin: '0 0 10px' },
-  comingSoonTitle: {
-    fontSize: '24px',
-    fontWeight: '800',
-    color: '#1a1a2e',
-    margin: '0 0 10px',
-  },
+  comingSoonTitle: { fontSize: '24px', fontWeight: '800', color: '#1a1a2e', margin: '0 0 10px' },
   comingSoonText: { color: '#aaa', fontSize: '14px' },
 };
