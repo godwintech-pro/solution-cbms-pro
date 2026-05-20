@@ -15,6 +15,7 @@ import Finance from './Finance';
 import Analytics from './Analytics';
 import Messages from './Messages';
 import UserManagement from './UserManagement';
+import Admin from './Admin';
 
 // ─── LIVE OVERVIEW ────────────────────────────────────────
 function LiveOverview() {
@@ -309,7 +310,7 @@ export default function Dashboard() {
     return unsub;
   }, []);
 
-  const modules = [
+  const allModules = [
     { id: 'overview', icon: '📊', label: 'Overview' },
     { id: 'branches', icon: '🏪', label: 'Branches' },
     { id: 'inventory', icon: '📦', label: 'Inventory' },
@@ -320,9 +321,20 @@ export default function Dashboard() {
     { id: 'users', icon: '👥', label: 'User Management' },
     { id: 'messages', icon: '💬', label: 'Messages' },
     { id: 'analytics', icon: '📈', label: 'Analytics' },
+    { id: 'admin', icon: '⚙️', label: 'Admin', adminOnly: true },
   ];
 
+  // Filter sidebar modules by role
+  const modules = allModules.filter((m) =>
+    !m.adminOnly || userRole === 'Super Admin'
+  );
+
   const sidebarWidth = sidebarOpen ? '240px' : '60px';
+
+  const renderedModuleIds = [
+    'overview', 'branches', 'inventory', 'expiry', 'reports',
+    'orders', 'finance', 'users', 'messages', 'analytics', 'admin',
+  ];
 
   return (
     <div style={styles.container}>
@@ -370,7 +382,13 @@ export default function Dashboard() {
         <nav style={styles.nav}>
           {modules.map((mod) => (
             <button key={mod.id}
-              style={activeModule === mod.id ? styles.navItemActive : styles.navItem}
+              style={{
+                ...(activeModule === mod.id ? styles.navItemActive : styles.navItem),
+                ...(mod.id === 'admin' && activeModule !== 'admin'
+                  ? styles.navItemAdmin : {}),
+                ...(mod.id === 'admin' && activeModule === 'admin'
+                  ? styles.navItemAdminActive : {}),
+              }}
               onClick={() => setActiveModule(mod.id)} title={mod.label}>
               <span style={styles.navIcon}>{mod.icon}</span>
               {sidebarOpen && <span>{mod.label}</span>}
@@ -387,8 +405,8 @@ export default function Dashboard() {
         <div style={styles.topBar}>
           <div>
             <h1 style={styles.pageTitle}>
-              {modules.find((m) => m.id === activeModule)?.icon}{' '}
-              {modules.find((m) => m.id === activeModule)?.label}
+              {allModules.find((m) => m.id === activeModule)?.icon}{' '}
+              {allModules.find((m) => m.id === activeModule)?.label}
             </h1>
             <p style={styles.pageDate}>
               {new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -409,23 +427,21 @@ export default function Dashboard() {
         {activeModule === 'users' && <UserManagement />}
         {activeModule === 'messages' && <Messages />}
         {activeModule === 'analytics' && <Analytics />}
+        {activeModule === 'admin' && <Admin />}
 
-        {activeModule !== 'overview' &&
-          activeModule !== 'branches' &&
-          activeModule !== 'inventory' &&
-          activeModule !== 'expiry' &&
-          activeModule !== 'reports' &&
-          activeModule !== 'orders' &&
-          activeModule !== 'finance' &&
-          activeModule !== 'users' &&
-          activeModule !== 'messages' &&
-          activeModule !== 'analytics' && (
-            <div style={styles.comingSoon}>
-              <p style={styles.comingSoonIcon}>{modules.find((m) => m.id === activeModule)?.icon}</p>
-              <h2 style={styles.comingSoonTitle}>{modules.find((m) => m.id === activeModule)?.label} Module</h2>
-              <p style={styles.comingSoonText}>This module is being built. Come back soon!</p>
-            </div>
-          )}
+        {!renderedModuleIds.includes(activeModule) && (
+          <div style={styles.comingSoon}>
+            <p style={styles.comingSoonIcon}>
+              {allModules.find((m) => m.id === activeModule)?.icon}
+            </p>
+            <h2 style={styles.comingSoonTitle}>
+              {allModules.find((m) => m.id === activeModule)?.label} Module
+            </h2>
+            <p style={styles.comingSoonText}>
+              This module is being built. Come back soon!
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -449,6 +465,8 @@ const styles = {
   nav: { display: 'flex', flexDirection: 'column', padding: '10px', gap: '4px', flex: 1 },
   navItem: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '10px 14px', background: 'transparent', border: 'none', color: '#aaa', fontSize: '13px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', width: '100%', whiteSpace: 'nowrap' },
   navItemActive: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '10px 14px', background: 'rgba(233,69,96,0.2)', border: '1px solid rgba(233,69,96,0.4)', color: 'white', fontSize: '13px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', width: '100%', whiteSpace: 'nowrap' },
+  navItemAdmin: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '10px 14px', background: 'rgba(220,53,69,0.1)', border: '1px solid rgba(220,53,69,0.3)', color: '#ff6b6b', fontSize: '13px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', width: '100%', whiteSpace: 'nowrap' },
+  navItemAdminActive: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '10px 14px', background: 'rgba(220,53,69,0.3)', border: '1px solid rgba(220,53,69,0.6)', color: 'white', fontSize: '13px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', width: '100%', whiteSpace: 'nowrap', fontWeight: '700' },
   navIcon: { fontSize: '18px', flexShrink: 0 },
   logoutBtn: { margin: '10px', padding: '10px', background: 'rgba(233,69,96,0.2)', border: '1px solid rgba(233,69,96,0.4)', color: '#e94560', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden' },
   main: { flex: 1, padding: '30px', transition: 'margin-left 0.3s ease', minWidth: 0 },
