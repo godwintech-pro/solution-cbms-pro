@@ -15,6 +15,8 @@ export default function Finance() {
     { id: 'profitability', icon: '📈', label: 'Profitability' },
     { id: 'salaries', icon: '👥', label: 'Salaries' },
     { id: 'cash', icon: '🏦', label: 'Cash Management' },
+    { id: 'investments', icon: '📊', label: 'Investments' },
+    { id: 'accountability', icon: '🎯', label: 'Accountability' },
     { id: 'reports', icon: '🖨️', label: 'Reports' },
   ];
 
@@ -37,6 +39,8 @@ export default function Finance() {
       {activeTab === 'profitability' && <Profitability />}
       {activeTab === 'salaries' && <Salaries />}
       {activeTab === 'cash' && <CashManagement />}
+      {activeTab === 'investments' && <InvestmentTracker />}
+      {activeTab === 'accountability' && <AccountabilityScores />}
       {activeTab === 'reports' && <FinanceReports />}
     </div>
   );
@@ -1142,6 +1146,919 @@ function FinanceReports() {
     </div>
   );
 }
+
+// ─── INVESTMENT TRACKER ───────────────────────────────────
+function InvestmentTracker() {
+  const { userName } = useAuth();
+  const [activeSection, setActiveSection] = useState('auto');
+  const [branches, setBranches] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [salaries, setSalaries] = useState([]);
+  const [handovers, setHandovers] = useState([]);
+  const [stock, setStock] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [investments, setInvestments] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    branchId: '', branchName: '',
+    stockCost: '', expectedRevenue: '',
+    startDate: new Date().toISOString().split('T')[0],
+    description: '', notes: '',
+  });
+
+  useEffect(() => {
+    const unsubB = onSnapshot(collection(db, 'branches'),
+      (snap) => setBranches(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubR = onSnapshot(
+      query(collection(db, 'dailyReports'), orderBy('createdAt', 'desc')),
+      (snap) => setReports(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubS = onSnapshot(collection(db, 'salaries'),
+      (snap) => setSalaries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubH = onSnapshot(collection(db, 'cashHandovers'),
+      (snap) => setHandovers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubSt = onSnapshot(collection(db, 'stock'),
+      (snap) => setStock(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubP = onSnapshot(collection(db, 'products'),
+      (snap) => setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubI = onSnapshot(
+      query(collection(db, 'investments'), orderBy('createdAt', 'desc')),
+      (snap) => setInvestments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => {
+      unsubB(); unsubR(); unsubS(); unsubH();
+      unsubSt(); unsubP(); unsubI();
+    };
+  }, []);
+
+  // ── Auto metrics per branch ──────────────────────────────
+  function getBranchAutoMetrics(branchId) {
+    // Stock at cost & selling price
+    const branchStock = stock.filter((s) => s.branchId === branchId);
+    const stockAtCost = branchStock.reduce((sum, s) => {
+      const product = products.find((p) => p.id === s.productId);
+      return sum + ((product?.buyingPrice || 0) * (s.currentQuantity || 0));
+    }, 0);
+    const stockAtSellPrice = branchStock.reduce((sum, s) => {
+      const product = products.find((p) => p.id === s.productId);
+      return sum + ((product?.sellingPrice || 0) * (s.currentQuantity || 0));
+    }, 0);
+    const potentialProfit = stockAtSellPrice - stockAtCost;
+
+    // Revenue & expenses from reports
+    const branchReports = reports.filter((r) => r.branchId === branchId);
+    const revenueCollected = branchReports.reduce((s, r) => s + (r.totalSales || 0), 0);
+    const dailyExpenses = branchReports.reduce((s, r) => s + (r.totalExpenses || 0), 0);
+
+    // Salaries
+    const totalSalaries = salaries
+      .filter((s) => s.branchId === branchId)
+      .reduce((s, sal) => s + (sal.amount || 0), 0);
+
+    // Total operating costs
+    const totalOperatingCosts = dailyExpenses + totalSalaries;
+
+    // Cash to HQ
+    const cashToHQ = handovers
+      .filter((h) => h.branchId === branchId && h.status === 'Confirmed')
+      .reduce((s, h) => s + (h.amount || 0), 0);
+
+    // Net profit so far
+    const netProfitSoFar = revenueCollected - totalOperatingCosts;
+
+    // Accountability
+    const totalExpected = stockAtSellPrice + revenueCollected;
+    const totalAccounted = stockAtCost + cashToHQ + revenueCollected;
+    const accountabilityPct = totalExpected > 0
+      ? Math.min((totalAccounted / totalExpected) * 100, 100) : 0;
+
+    return {
+      stockAtCost,
+      stockAtSellPrice,
+      potentialProfit,
+      revenueCollected,
+      dailyExpenses,
+      totalSalaries,
+      totalOperatingCosts,
+      cashToHQ,
+      netProfitSoFar,
+      accountabilityPct,
+      reportCount: branchReports.length,
+    };
+  }
+
+  // ── Manual investment metrics ────────────────────────────
+  function getInvestmentMetrics(inv) {
+    const branchId = inv.branchId;
+    const startDate = inv.startDate;
+
+    const branchReports = reports.filter((r) =>
+      r.branchId === branchId && r.date >= startDate);
+    const revenueCollected = branchReports.reduce((s, r) => s + (r.totalSales || 0), 0);
+    const dailyExpenses = branchReports.reduce((s, r) => s + (r.totalExpenses || 0), 0);
+
+    const totalSalaries = salaries
+      .filter((s) => s.branchId === branchId && s.paymentDate >= startDate)
+      .reduce((s, sal) => s + (sal.amount || 0), 0);
+
+    const totalOperatingCosts = dailyExpenses + totalSalaries;
+    const totalInvestment = inv.stockCost + totalOperatingCosts;
+    const realExpectedProfit = inv.expectedRevenue - totalInvestment;
+    const realProfitSoFar = revenueCollected - totalOperatingCosts;
+
+    const cashToHQ = handovers
+      .filter((h) => h.branchId === branchId && h.date >= startDate && h.status === 'Confirmed')
+      .reduce((s, h) => s + (h.amount || 0), 0);
+
+    const branchStock = stock.filter((s) => s.branchId === branchId);
+    const stockRemainingCost = branchStock.reduce((sum, s) => {
+      const product = products.find((p) => p.id === s.productId);
+      return sum + ((product?.buyingPrice || 0) * (s.currentQuantity || 0));
+    }, 0);
+
+    const revenueProgress = inv.expectedRevenue > 0
+      ? Math.min((revenueCollected / inv.expectedRevenue) * 100, 100) : 0;
+
+    return {
+      revenueCollected, dailyExpenses, totalSalaries,
+      totalOperatingCosts, totalInvestment, realExpectedProfit,
+      realProfitSoFar, revenueProgress, cashToHQ,
+      stockRemainingCost, reportCount: branchReports.length,
+    };
+  }
+
+  function handleChange(e) {
+    const { name, value } = e.target;
+    if (name === 'branchId') {
+      const branch = branches.find((b) => b.id === value);
+      setForm({ ...form, branchId: value, branchName: branch?.name || '' });
+    } else {
+      setForm({ ...form, [name]: value });
+    }
+  }
+
+  function resetForm() {
+    setForm({ branchId: '', branchName: '', stockCost: '', expectedRevenue: '', startDate: new Date().toISOString().split('T')[0], description: '', notes: '' });
+    setShowForm(false);
+  }
+
+  async function handleSave() {
+    if (!form.branchId) return alert('Select a branch.');
+    if (!form.stockCost || parseFloat(form.stockCost) <= 0) return alert('Enter stock cost.');
+    if (!form.expectedRevenue || parseFloat(form.expectedRevenue) <= 0) return alert('Enter expected revenue.');
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'investments'), {
+        ...form,
+        stockCost: parseFloat(form.stockCost),
+        expectedRevenue: parseFloat(form.expectedRevenue),
+        status: 'Active',
+        createdBy: userName || 'Unknown',
+        createdAt: serverTimestamp(),
+      });
+      resetForm();
+    } catch (err) { alert(err.message); }
+    setLoading(false);
+  }
+
+  async function handleClose(id) {
+    if (window.confirm('Mark this investment as closed/completed?')) {
+      await updateDoc(doc(db, 'investments', id), {
+        status: 'Closed', closedAt: serverTimestamp(),
+      });
+    }
+  }
+
+  function getProgressColor(pct) {
+    if (pct >= 75) return '#28a745';
+    if (pct >= 40) return '#f39c12';
+    return '#e94560';
+  }
+
+  // Overall auto summary
+  const totalStockAtCost = branches.reduce((s, b) =>
+    s + getBranchAutoMetrics(b.id).stockAtCost, 0);
+  const totalStockAtSell = branches.reduce((s, b) =>
+    s + getBranchAutoMetrics(b.id).stockAtSellPrice, 0);
+  const totalRevenue = branches.reduce((s, b) =>
+    s + getBranchAutoMetrics(b.id).revenueCollected, 0);
+  const totalNetProfit = branches.reduce((s, b) =>
+    s + getBranchAutoMetrics(b.id).netProfitSoFar, 0);
+
+  return (
+    <div>
+      {/* Section Toggle */}
+      <div style={invStyles.sectionToggle}>
+        <button
+          style={activeSection === 'auto' ? invStyles.toggleActive : invStyles.toggleBtn}
+          onClick={() => setActiveSection('auto')}>
+          🤖 Auto Dashboard
+        </button>
+        <button
+          style={activeSection === 'manual' ? invStyles.toggleActive : invStyles.toggleBtn}
+          onClick={() => setActiveSection('manual')}>
+          📝 Manual Investments
+        </button>
+      </div>
+
+      {/* ── AUTO SECTION ── */}
+      {activeSection === 'auto' && (
+        <div>
+          {/* Overall Summary */}
+          <div style={styles.statsGrid}>
+            <div style={{ ...styles.statCard, borderTop: '4px solid #0f3460' }}>
+              <p style={styles.statLabel}>📦 Total Stock at Cost</p>
+              <p style={styles.statValue}>K {totalStockAtCost.toFixed(2)}</p>
+              <p style={styles.statSub}>All branches combined</p>
+            </div>
+            <div style={{ ...styles.statCard, borderTop: '4px solid #28a745' }}>
+              <p style={styles.statLabel}>💰 Total Stock at Sell Price</p>
+              <p style={{ ...styles.statValue, color: '#28a745' }}>
+                K {totalStockAtSell.toFixed(2)}
+              </p>
+              <p style={styles.statSub}>Potential revenue if all sold</p>
+            </div>
+            <div style={{ ...styles.statCard, borderTop: '4px solid #e94560' }}>
+              <p style={styles.statLabel}>📈 Revenue Collected</p>
+              <p style={{ ...styles.statValue, color: '#e94560' }}>
+                K {totalRevenue.toFixed(2)}
+              </p>
+              <p style={styles.statSub}>All time from reports</p>
+            </div>
+            <div style={{ ...styles.statCard, borderTop: `4px solid ${totalNetProfit >= 0 ? '#28a745' : '#dc3545'}` }}>
+              <p style={styles.statLabel}>🎯 Net Profit So Far</p>
+              <p style={{ ...styles.statValue, color: totalNetProfit >= 0 ? '#28a745' : '#dc3545' }}>
+                K {totalNetProfit.toFixed(2)}
+              </p>
+              <p style={styles.statSub}>After all expenses & salaries</p>
+            </div>
+          </div>
+
+          {/* Per Branch Auto Cards */}
+          <div style={invStyles.branchGrid}>
+            {branches.map((branch) => {
+              const m = getBranchAutoMetrics(branch.id);
+              const profitColor = m.netProfitSoFar >= 0 ? '#28a745' : '#dc3545';
+              return (
+                <div key={branch.id} style={invStyles.autoBranchCard}>
+                  {/* Header */}
+                  <div style={invStyles.autoBranchHeader}>
+                    <span style={invStyles.autoBranchIcon}>🏪</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={invStyles.autoBranchName}>{branch.name}</p>
+                      <p style={invStyles.autoBranchSub}>{m.reportCount} reports</p>
+                    </div>
+                    <span style={{
+                      ...invStyles.autoBranchScore,
+                      color: m.accountabilityPct >= 70 ? '#28a745' : '#f39c12',
+                    }}>
+                      {m.accountabilityPct.toFixed(0)}%
+                    </span>
+                  </div>
+
+                  {/* Stock Position */}
+                  <div style={invStyles.autoSection}>
+                    <p style={invStyles.autoSectionTitle}>📦 Stock Position</p>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Stock at Cost</span>
+                      <span style={invStyles.autoValue}>K {m.stockAtCost.toFixed(2)}</span>
+                    </div>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Stock at Sell Price</span>
+                      <span style={{ ...invStyles.autoValue, color: '#28a745' }}>
+                        K {m.stockAtSellPrice.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Potential Profit</span>
+                      <span style={{ ...invStyles.autoValue, color: '#0f3460', fontWeight: '800' }}>
+                        K {m.potentialProfit.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Revenue & Costs */}
+                  <div style={invStyles.autoSection}>
+                    <p style={invStyles.autoSectionTitle}>💰 Revenue & Costs</p>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Revenue Collected</span>
+                      <span style={{ ...invStyles.autoValue, color: '#0f3460' }}>
+                        K {m.revenueCollected.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Daily Expenses</span>
+                      <span style={{ ...invStyles.autoValue, color: '#e94560' }}>
+                        - K {m.dailyExpenses.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Salaries</span>
+                      <span style={{ ...invStyles.autoValue, color: '#e94560' }}>
+                        - K {m.totalSalaries.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={{ ...invStyles.autoRow, borderTop: '1px solid #eee', paddingTop: '6px', marginTop: '4px' }}>
+                      <span style={{ ...invStyles.autoLabel, fontWeight: '700' }}>Net Profit So Far</span>
+                      <span style={{ ...invStyles.autoValue, color: profitColor, fontWeight: '800', fontSize: '15px' }}>
+                        K {m.netProfitSoFar.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Cash Position */}
+                  <div style={invStyles.autoSection}>
+                    <p style={invStyles.autoSectionTitle}>🏦 Cash Position</p>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Cash to HQ</span>
+                      <span style={{ ...invStyles.autoValue, color: '#28a745' }}>
+                        K {m.cashToHQ.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={invStyles.autoRow}>
+                      <span style={invStyles.autoLabel}>Total Operating Costs</span>
+                      <span style={{ ...invStyles.autoValue, color: '#e94560' }}>
+                        K {m.totalOperatingCosts.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Accountability Bar */}
+                  <div style={invStyles.accRow}>
+                    <span style={invStyles.accLabel}>Accountability</span>
+                    <span style={{
+                      ...invStyles.accPct,
+                      color: m.accountabilityPct >= 70 ? '#28a745' : '#f39c12'
+                    }}>
+                      {m.accountabilityPct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div style={invStyles.accBar}>
+                    <div style={{
+                      ...invStyles.accBarFill,
+                      width: `${m.accountabilityPct}%`,
+                      background: m.accountabilityPct >= 70 ? '#28a745' : '#f39c12',
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── MANUAL SECTION ── */}
+      {activeSection === 'manual' && (
+        <div style={styles.sectionCard}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h3 style={styles.sectionTitle}>📝 Manual Investment Records</h3>
+              <p style={styles.sectionSub}>
+                Record specific stock batches sent to branches.
+                All expenses and sales are auto-tracked.
+              </p>
+            </div>
+            <button style={styles.saveBtn} onClick={() => setShowForm(!showForm)}>
+              + Record Investment
+            </button>
+          </div>
+
+          {/* Form Modal */}
+          {showForm && (
+            <div style={styles.modalOverlay}>
+              <div style={styles.modal}>
+                <div style={styles.modalHeader}>
+                  <div style={styles.modalHeaderLeft}>
+                    <div style={styles.modalIcon}>📊</div>
+                    <div>
+                      <h3 style={styles.modalTitle}>Record Stock Investment</h3>
+                      <p style={styles.modalSub}>
+                        Enter stock sent to branch. Expenses tracked automatically.
+                      </p>
+                    </div>
+                  </div>
+                  <button style={styles.closeBtn} onClick={resetForm}>✕</button>
+                </div>
+                <div style={styles.modalBody}>
+                  <div style={styles.formSection}>
+                    <p style={styles.formSectionLabel}>🏪 Branch & Period</p>
+                    <div style={styles.formGrid}>
+                      <div style={styles.inputGroup}>
+                        <label style={styles.label}>Branch *</label>
+                        <select style={styles.input} name="branchId"
+                          value={form.branchId} onChange={handleChange}>
+                          <option value="">Select Branch</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={styles.inputGroup}>
+                        <label style={styles.label}>Start Date *</label>
+                        <input style={styles.input} name="startDate" type="date"
+                          value={form.startDate} onChange={handleChange} />
+                      </div>
+                      <div style={{ ...styles.inputGroup, gridColumn: '1 / -1' }}>
+                        <label style={styles.label}>Description</label>
+                        <input style={styles.input} name="description"
+                          value={form.description}
+                          placeholder="e.g. May 2026 medicines stock cycle"
+                          onChange={handleChange} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.formSection}>
+                    <p style={styles.formSectionLabel}>💰 Investment Figures</p>
+                    <div style={styles.formGrid}>
+                      <div style={styles.inputGroup}>
+                        <label style={styles.label}>Stock Cost (K) *</label>
+                        <div style={salaryFormStyles.amountWrap}>
+                          <span style={salaryFormStyles.amountPrefix}>K</span>
+                          <input style={salaryFormStyles.amountInput}
+                            name="stockCost" type="number"
+                            value={form.stockCost} placeholder="0.00"
+                            onChange={handleChange} />
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#888', margin: '4px 0 0' }}>
+                          What you paid for this batch of stock
+                        </p>
+                      </div>
+                      <div style={styles.inputGroup}>
+                        <label style={styles.label}>Expected Revenue (K) *</label>
+                        <div style={salaryFormStyles.amountWrap}>
+                          <span style={salaryFormStyles.amountPrefix}>K</span>
+                          <input style={salaryFormStyles.amountInput}
+                            name="expectedRevenue" type="number"
+                            value={form.expectedRevenue} placeholder="0.00"
+                            onChange={handleChange} />
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#888', margin: '4px 0 0' }}>
+                          Expected total when all stock is sold
+                        </p>
+                      </div>
+                    </div>
+
+                    {form.stockCost && form.expectedRevenue && (
+                      <div style={invStyles.previewBox}>
+                        <p style={invStyles.previewTitle}>📋 Investment Preview</p>
+                        <div style={invStyles.previewGrid}>
+                          <div style={invStyles.previewItem}>
+                            <p style={invStyles.previewLabel}>Stock Cost</p>
+                            <p style={invStyles.previewValue}>K {parseFloat(form.stockCost || 0).toFixed(2)}</p>
+                          </div>
+                          <div style={invStyles.previewItem}>
+                            <p style={invStyles.previewLabel}>Expected Revenue</p>
+                            <p style={invStyles.previewValue}>K {parseFloat(form.expectedRevenue || 0).toFixed(2)}</p>
+                          </div>
+                          <div style={invStyles.previewItem}>
+                            <p style={invStyles.previewLabel}>Gross Stock Margin</p>
+                            <p style={{ ...invStyles.previewValue, color: '#28a745' }}>
+                              K {(parseFloat(form.expectedRevenue || 0) - parseFloat(form.stockCost || 0)).toFixed(2)}
+                            </p>
+                          </div>
+                          <div style={invStyles.previewItem}>
+                            <p style={invStyles.previewLabel}>Note</p>
+                            <p style={{ ...invStyles.previewValue, fontSize: '11px', color: '#888' }}>
+                              Real profit after expenses will be lower
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={styles.inputGroup}>
+                    <label style={styles.label}>Notes</label>
+                    <input style={styles.input} name="notes" value={form.notes}
+                      placeholder="Any additional notes..."
+                      onChange={handleChange} />
+                  </div>
+                </div>
+                <div style={styles.modalFooter}>
+                  <button style={styles.cancelBtn} onClick={resetForm}>Cancel</button>
+                  <button
+                    style={loading ? styles.saveBtnDisabled : styles.saveBtn}
+                    onClick={handleSave} disabled={loading}>
+                    {loading ? 'Saving...' : '💾 Save Investment'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Manual Investment Cards */}
+          {investments.length === 0 ? (
+            <div style={styles.empty}>
+              No manual investments recorded yet.
+            </div>
+          ) : (
+            <div style={invStyles.manualGrid}>
+              {investments.map((inv) => {
+                const m = getInvestmentMetrics(inv);
+                const progressColor = getProgressColor(m.revenueProgress);
+                return (
+                  <div key={inv.id} style={{
+                    ...invStyles.manualCard,
+                    opacity: inv.status === 'Closed' ? 0.7 : 1,
+                    borderTop: `4px solid ${progressColor}`,
+                  }}>
+                    <div style={invStyles.manualCardHeader}>
+                      <div>
+                        <p style={invStyles.manualBranchName}>{inv.branchName}</p>
+                        <p style={invStyles.manualDesc}>{inv.description || `Started ${inv.startDate}`}</p>
+                      </div>
+                      <span style={{
+                        ...invStyles.statusBadge,
+                        background: inv.status === 'Active' ? '#e6f9ee' : '#f0f0f0',
+                        color: inv.status === 'Active' ? '#28a745' : '#888',
+                      }}>
+                        {inv.status}
+                      </span>
+                    </div>
+
+                    <div style={invStyles.manualStats}>
+                      <div style={invStyles.manualStat}>
+                        <p style={invStyles.manualStatLabel}>Stock Cost</p>
+                        <p style={invStyles.manualStatValue}>K {inv.stockCost.toFixed(2)}</p>
+                      </div>
+                      <div style={invStyles.manualStat}>
+                        <p style={invStyles.manualStatLabel}>+ Operating Costs</p>
+                        <p style={{ ...invStyles.manualStatValue, color: '#e94560' }}>
+                          K {m.totalOperatingCosts.toFixed(2)}
+                        </p>
+                      </div>
+                      <div style={invStyles.manualStat}>
+                        <p style={invStyles.manualStatLabel}>Total Invested</p>
+                        <p style={{ ...invStyles.manualStatValue, color: '#0f3460', fontWeight: '800' }}>
+                          K {m.totalInvestment.toFixed(2)}
+                        </p>
+                      </div>
+                      <div style={invStyles.manualStat}>
+                        <p style={invStyles.manualStatLabel}>Expected Revenue</p>
+                        <p style={invStyles.manualStatValue}>K {inv.expectedRevenue.toFixed(2)}</p>
+                      </div>
+                      <div style={invStyles.manualStat}>
+                        <p style={invStyles.manualStatLabel}>Revenue Collected</p>
+                        <p style={{ ...invStyles.manualStatValue, color: '#0f3460' }}>
+                          K {m.revenueCollected.toFixed(2)}
+                        </p>
+                      </div>
+                      <div style={invStyles.manualStat}>
+                        <p style={invStyles.manualStatLabel}>Real Profit So Far</p>
+                        <p style={{
+                          ...invStyles.manualStatValue,
+                          color: m.realProfitSoFar >= 0 ? '#28a745' : '#dc3545',
+                          fontWeight: '800',
+                        }}>
+                          K {m.realProfitSoFar.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={invStyles.accRow}>
+                      <span style={invStyles.accLabel}>
+                        Revenue Progress ({m.revenueProgress.toFixed(1)}%)
+                      </span>
+                    </div>
+                    <div style={invStyles.accBar}>
+                      <div style={{
+                        ...invStyles.accBarFill,
+                        width: `${m.revenueProgress}%`,
+                        background: progressColor,
+                      }} />
+                    </div>
+
+                    {inv.status === 'Active' && (
+                      <button style={invStyles.closeBtn}
+                        onClick={() => handleClose(inv.id)}>
+                        ✅ Mark as Closed
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ACCOUNTABILITY SCORES ────────────────────────────────
+function AccountabilityScores() {
+  const [reports, setReports] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [handovers, setHandovers] = useState([]);
+  const [adjustments, setAdjustments] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(
+    new Date().toISOString().slice(0, 7)
+  );
+
+  useEffect(() => {
+    const unsubR = onSnapshot(
+      query(collection(db, 'dailyReports'), orderBy('createdAt', 'desc')),
+      (snap) => setReports(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
+    const unsubB = onSnapshot(collection(db, 'branches'),
+      (snap) => setBranches(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubH = onSnapshot(collection(db, 'cashHandovers'),
+      (snap) => setHandovers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubA = onSnapshot(collection(db, 'stockAdjustments'),
+      (snap) => setAdjustments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { unsubR(); unsubB(); unsubH(); unsubA(); };
+  }, []);
+
+  function getDaysInMonth(monthStr) {
+    const [year, month] = monthStr.split('-').map(Number);
+    return new Date(year, month, 0).getDate();
+  }
+
+  function calculateScore(branchId) {
+    const totalDays = getDaysInMonth(selectedMonth);
+    const monthStart = `${selectedMonth}-01`;
+    const monthEnd = `${selectedMonth}-${String(totalDays).padStart(2, '0')}`;
+
+    // Branch reports this month
+    const monthReports = reports.filter((r) =>
+      r.branchId === branchId && r.date >= monthStart && r.date <= monthEnd
+    );
+
+    // 1. Report Rate (25%) — how many days did they submit
+    const reportRate = totalDays > 0
+      ? Math.min((monthReports.length / totalDays) * 100, 100) : 0;
+
+    // 2. Cash Accuracy (25%) — days with zero variance
+    const zeroVarianceDays = monthReports.filter((r) => (r.variance || 0) === 0).length;
+    const cashAccuracy = monthReports.length > 0
+      ? (zeroVarianceDays / monthReports.length) * 100 : 0;
+
+    // 3. Cash Handover Rate (25%) — cash handed vs cash reported
+    const totalCashReported = monthReports.reduce((s, r) => s + (r.actualCash || 0), 0);
+    const totalCashHandedOver = handovers
+      .filter((h) => h.branchId === branchId && h.date >= monthStart && h.date <= monthEnd && h.status === 'Confirmed')
+      .reduce((s, h) => s + (h.amount || 0), 0);
+    const handoverRate = totalCashReported > 0
+      ? Math.min((totalCashHandedOver / totalCashReported) * 100, 100) : 50;
+
+    // 4. Stock Compliance (25%) — stock adjustments recorded
+    const stockUpdates = adjustments.filter((a) => {
+      if (a.branchId !== branchId) return false;
+      if (!a.createdAt?.seconds) return false;
+      const date = new Date(a.createdAt.seconds * 1000).toISOString().slice(0, 7);
+      return date === selectedMonth;
+    }).length;
+    const stockCompliance = Math.min(stockUpdates * 10, 100);
+
+    // Overall score
+    const overallScore = (reportRate + cashAccuracy + handoverRate + stockCompliance) / 4;
+
+    return {
+      overallScore,
+      reportRate,
+      cashAccuracy,
+      handoverRate,
+      stockCompliance,
+      reportCount: monthReports.length,
+      totalDays,
+      totalCashReported,
+      totalCashHandedOver,
+      variantDays: monthReports.filter((r) => (r.variance || 0) < 0).length,
+    };
+  }
+
+  function getScoreColor(score) {
+    if (score >= 90) return '#28a745';
+    if (score >= 70) return '#f39c12';
+    if (score >= 50) return '#ff6b35';
+    return '#dc3545';
+  }
+
+  function getScoreLabel(score) {
+    if (score >= 90) return '🟢 Excellent';
+    if (score >= 70) return '🟡 Good';
+    if (score >= 50) return '🟠 Needs Attention';
+    return '🔴 Critical';
+  }
+
+  const branchScores = branches.map((b) => ({
+    ...b,
+    ...calculateScore(b.id),
+  })).sort((a, b) => b.overallScore - a.overallScore);
+
+  const avgScore = branchScores.length > 0
+    ? branchScores.reduce((s, b) => s + b.overallScore, 0) / branchScores.length : 0;
+
+  return (
+    <div>
+      {/* Header Stats */}
+      <div style={styles.statsGrid}>
+        <div style={{ ...styles.statCard, borderTop: `4px solid ${getScoreColor(avgScore)}` }}>
+          <p style={styles.statLabel}>🎯 Average Score</p>
+          <p style={{ ...styles.statValue, color: getScoreColor(avgScore) }}>
+            {avgScore.toFixed(1)}%
+          </p>
+          <p style={styles.statSub}>{getScoreLabel(avgScore)}</p>
+        </div>
+        <div style={{ ...styles.statCard, borderTop: '4px solid #28a745' }}>
+          <p style={styles.statLabel}>🟢 Excellent Branches</p>
+          <p style={{ ...styles.statValue, color: '#28a745' }}>
+            {branchScores.filter((b) => b.overallScore >= 90).length}
+          </p>
+          <p style={styles.statSub}>Score 90%+</p>
+        </div>
+        <div style={{ ...styles.statCard, borderTop: '4px solid #dc3545' }}>
+          <p style={styles.statLabel}>🔴 Critical Branches</p>
+          <p style={{ ...styles.statValue, color: '#dc3545' }}>
+            {branchScores.filter((b) => b.overallScore < 50).length}
+          </p>
+          <p style={styles.statSub}>Needs immediate attention</p>
+        </div>
+        <div style={{ ...styles.statCard, borderTop: '4px solid #0f3460' }}>
+          <p style={styles.statLabel}>📅 Month</p>
+          <p style={{ ...styles.statValue, fontSize: '18px' }}>
+            {new Date(selectedMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </p>
+          <p style={styles.statSub}>Selected period</p>
+        </div>
+      </div>
+
+      {/* Month Selector */}
+      <div style={styles.sectionCard}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h3 style={styles.sectionTitle}>🎯 Branch Accountability Scores</h3>
+            <p style={styles.sectionSub}>
+              Monthly accountability score for each branch based on
+              reporting, cash accuracy, handovers and stock compliance.
+            </p>
+          </div>
+          <input
+            style={{ ...styles.filterSelect, fontSize: '14px' }}
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+          />
+        </div>
+
+        {/* Score Cards */}
+        {branchScores.length === 0 ? (
+          <div style={styles.empty}>No branches found.</div>
+        ) : (
+          <div style={accStyles.scoreGrid}>
+            {branchScores.map((branch, rank) => {
+              const scoreColor = getScoreColor(branch.overallScore);
+              return (
+                <div key={branch.id} style={{
+                  ...accStyles.scoreCard,
+                  borderTop: `4px solid ${scoreColor}`,
+                }}>
+                  {/* Rank & Branch */}
+                  <div style={accStyles.scoreCardHeader}>
+                    <div style={accStyles.rankBadge}>
+                      {rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : `#${rank + 1}`}
+                    </div>
+                    <div style={accStyles.scoreCardInfo}>
+                      <p style={accStyles.scoreBranchName}>{branch.name}</p>
+                      <p style={{ ...accStyles.scoreLabel, color: scoreColor, fontWeight: '700' }}>
+                        {getScoreLabel(branch.overallScore)}
+                      </p>
+                    </div>
+                    <div style={{
+                      ...accStyles.bigScore,
+                      color: scoreColor,
+                    }}>
+                      {branch.overallScore.toFixed(0)}%
+                    </div>
+                  </div>
+
+                  {/* Score Breakdown */}
+                  <div style={accStyles.scoreBreakdown}>
+                    {[
+                      { label: 'Report Rate', value: branch.reportRate, desc: `${branch.reportCount}/${branch.totalDays} days` },
+                      { label: 'Cash Accuracy', value: branch.cashAccuracy, desc: `${branch.variantDays} variance days` },
+                      { label: 'Cash Handover', value: branch.handoverRate, desc: `K ${branch.totalCashHandedOver.toFixed(0)} of K ${branch.totalCashReported.toFixed(0)}` },
+                      { label: 'Stock Compliance', value: branch.stockCompliance, desc: 'Stock updates logged' },
+                    ].map((item, i) => (
+                      <div key={i} style={accStyles.scoreItem}>
+                        <div style={accStyles.scoreItemHeader}>
+                          <span style={accStyles.scoreItemLabel}>{item.label}</span>
+                          <span style={{
+                            ...accStyles.scoreItemPct,
+                            color: getScoreColor(item.value),
+                          }}>
+                            {item.value.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={accStyles.scoreBar}>
+                          <div style={{
+                            ...accStyles.scoreBarFill,
+                            width: `${item.value}%`,
+                            background: getScoreColor(item.value),
+                          }} />
+                        </div>
+                        <p style={accStyles.scoreItemDesc}>{item.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Alerts */}
+                  {branch.overallScore < 70 && (
+                    <div style={accStyles.alertBox}>
+                      <p style={accStyles.alertText}>
+                        {branch.overallScore < 50
+                          ? '🚨 Critical: Immediate investigation required'
+                          : '⚠️ Below target: Review with branch manager'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Scoring Guide */}
+        <div style={accStyles.guideBox}>
+          <p style={accStyles.guideTitle}>📖 How Scores Are Calculated</p>
+          <div style={accStyles.guideGrid}>
+            <div style={accStyles.guideItem}>
+              <p style={accStyles.guideLabel}>📋 Report Rate (25%)</p>
+              <p style={accStyles.guideDesc}>How many days out of the month a daily report was submitted.</p>
+            </div>
+            <div style={accStyles.guideItem}>
+              <p style={accStyles.guideLabel}>💵 Cash Accuracy (25%)</p>
+              <p style={accStyles.guideDesc}>Percentage of reports submitted with zero cash variance.</p>
+            </div>
+            <div style={accStyles.guideItem}>
+              <p style={accStyles.guideLabel}>🏦 Cash Handover (25%)</p>
+              <p style={accStyles.guideDesc}>How much of reported cash was handed over to Head Office.</p>
+            </div>
+            <div style={accStyles.guideItem}>
+              <p style={accStyles.guideLabel}>📦 Stock Compliance (25%)</p>
+              <p style={accStyles.guideDesc}>How actively stock adjustments and movements were recorded.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const invStyles = {
+  previewBox: { background: 'linear-gradient(135deg, #f0f4ff, #e6f9ee)', borderRadius: '10px', padding: '16px', border: '1px solid #d0e0ff', marginTop: '16px' },
+  previewTitle: { fontSize: '13px', fontWeight: '700', color: '#0f3460', margin: '0 0 12px' },
+  previewGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' },
+  previewItem: { textAlign: 'center' },
+  previewLabel: { fontSize: '11px', color: '#888', margin: '0 0 4px' },
+  previewValue: { fontSize: '14px', fontWeight: '700', color: '#1a1a2e', margin: 0 },
+  investmentGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' },
+  investmentCard: { background: '#fafafa', borderRadius: '12px', padding: '20px', border: '1px solid #f0f0f0' },
+  invCardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' },
+  invBranchName: { fontSize: '18px', fontWeight: '800', color: '#1a1a2e', margin: 0 },
+  invDate: { fontSize: '12px', color: '#aaa', margin: '4px 0 0' },
+  invHeaderRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' },
+  statusBadge: { padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' },
+  invSection: { background: 'white', borderRadius: '8px', padding: '12px', marginBottom: '10px', border: '1px solid #f0f0f0' },
+  invSectionTitle: { fontSize: '12px', fontWeight: '700', color: '#0f3460', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  invRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f8f8f8' },
+  invLabel: { fontSize: '13px', color: '#666' },
+  invValue: { fontSize: '13px', fontWeight: '600', color: '#1a1a2e' },
+  progressSection: { marginBottom: '12px' },
+  progressHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' },
+  progressLabel: { fontSize: '12px', color: '#888' },
+  progressPct: { fontSize: '12px', fontWeight: '700' },
+  progressBar: { height: '8px', background: '#f0f0f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' },
+  progressFill: { height: '100%', borderRadius: '4px', transition: 'width 0.4s ease' },
+  closeBtn: { width: '100%', padding: '10px', background: '#f0f4ff', color: '#0f3460', border: '1px solid #d0e0ff', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
+};
+
+const accStyles = {
+  scoreGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '24px' },
+  scoreCard: { background: '#fafafa', borderRadius: '12px', padding: '20px', border: '1px solid #f0f0f0' },
+  scoreCardHeader: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' },
+  rankBadge: { fontSize: '24px', flexShrink: 0 },
+  scoreCardInfo: { flex: 1 },
+  scoreBranchName: { fontSize: '16px', fontWeight: '800', color: '#1a1a2e', margin: 0 },
+  scoreLabel: { fontSize: '12px', margin: '2px 0 0' },
+  bigScore: { fontSize: '32px', fontWeight: '900' },
+  scoreBreakdown: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' },
+  scoreItem: {},
+  scoreItemHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' },
+  scoreItemLabel: { fontSize: '12px', color: '#555', fontWeight: '600' },
+  scoreItemPct: { fontSize: '12px', fontWeight: '700' },
+  scoreBar: { height: '6px', background: '#f0f0f0', borderRadius: '3px', overflow: 'hidden', marginBottom: '2px' },
+  scoreBarFill: { height: '100%', borderRadius: '3px', transition: 'width 0.4s' },
+  scoreItemDesc: { fontSize: '11px', color: '#aaa', margin: 0 },
+  alertBox: { background: '#fff8e1', borderRadius: '8px', padding: '10px 12px', border: '1px solid #ffe082' },
+  alertText: { fontSize: '12px', color: '#f39c12', fontWeight: '600', margin: 0 },
+  guideBox: { background: '#f0f4ff', borderRadius: '10px', padding: '20px', border: '1px solid #d0e0ff' },
+  guideTitle: { fontSize: '14px', fontWeight: '700', color: '#0f3460', margin: '0 0 16px' },
+  guideGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' },
+  guideItem: {},
+  guideLabel: { fontSize: '13px', fontWeight: '700', color: '#1a1a2e', margin: '0 0 4px' },
+  guideDesc: { fontSize: '12px', color: '#666', margin: 0, lineHeight: '1.5' },
+};
 
 // ─── STYLES ───────────────────────────────────────────────
 const styles = {

@@ -20,6 +20,7 @@ export default function Inventory() {
     { id: 'categories', icon: '🏷️', label: 'Categories' },
     { id: 'suppliers', icon: '🏭', label: 'Suppliers' },
     { id: 'stock', icon: '📊', label: 'Stock Levels' },
+    { id: 'stocktaking', icon: '🔍', label: 'Stock Taking' },
   ];
 
   return (
@@ -42,6 +43,8 @@ export default function Inventory() {
       {activeTab === 'suppliers' && <Suppliers />}
       {activeTab === 'products' && <Products />}
       {activeTab === 'stock' && <StockLevels />}
+      {activeTab === 'stocktaking' && <StockTaking />}
+
     </div>
   );
 }
@@ -1486,6 +1489,436 @@ function StockLevels() {
     </div>
   );
 }
+
+// ─── STOCK TAKING ─────────────────────────────────────────
+function StockTaking() {
+  const { userName, userRole } = useAuth();
+  const [stockTakes, setStockTakes] = useState([]);
+  const [stock, setStock] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [countItems, setCountItems] = useState([]);
+  const [expandedTake, setExpandedTake] = useState(null);
+  const [filterBranch, setFilterBranch] = useState('');
+
+  useEffect(() => {
+    const unsubST = onSnapshot(
+      query(collection(db, 'stockTakes'), orderBy('createdAt', 'desc')),
+      (snap) => setStockTakes(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    );
+    const unsubS = onSnapshot(collection(db, 'stock'),
+      (snap) => setStock(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubP = onSnapshot(collection(db, 'products'),
+      (snap) => setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubB = onSnapshot(collection(db, 'branches'),
+      (snap) => setBranches(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { unsubST(); unsubS(); unsubP(); unsubB(); };
+  }, []);
+
+  function getProductName(id) {
+    return products.find((p) => p.id === id)?.name || '—';
+  }
+
+  function getProductBuyPrice(id) {
+    return products.find((p) => p.id === id)?.buyingPrice || 0;
+  }
+
+  function getBranchName(id) {
+    return branches.find((b) => b.id === id)?.name || '—';
+  }
+
+  function loadBranchStock(branchId) {
+    setSelectedBranch(branchId);
+    const branchStock = stock.filter((s) => s.branchId === branchId);
+    setCountItems(branchStock.map((s) => ({
+      stockId: s.id,
+      productId: s.productId,
+      productName: getProductName(s.productId),
+      systemQty: s.currentQuantity || 0,
+      actualQty: '',
+      buyingPrice: getProductBuyPrice(s.productId),
+    })));
+  }
+
+  function updateActualQty(stockId, value) {
+    setCountItems(countItems.map((item) =>
+      item.stockId === stockId ? { ...item, actualQty: value } : item
+    ));
+  }
+
+  async function handleSubmitCount() {
+    const incomplete = countItems.find((i) => i.actualQty === '');
+    if (incomplete) return alert(`Enter actual count for ${incomplete.productName}`);
+    if (!selectedBranch) return alert('Select a branch.');
+    setLoading(true);
+    try {
+      const branch = branches.find((b) => b.id === selectedBranch);
+      const items = countItems.map((item) => ({
+        ...item,
+        actualQty: parseInt(item.actualQty),
+        variance: parseInt(item.actualQty) - item.systemQty,
+        varianceValue: (parseInt(item.actualQty) - item.systemQty) * item.buyingPrice,
+      }));
+
+      const totalVariance = items.reduce((s, i) => s + i.variance, 0);
+      const totalVarianceValue = items.reduce((s, i) => s + i.varianceValue, 0);
+      const hasDiscrepancy = items.some((i) => i.variance !== 0);
+
+      await addDoc(collection(db, 'stockTakes'), {
+        branchId: selectedBranch,
+        branchName: branch?.name || '',
+        date: new Date().toISOString().split('T')[0],
+        items,
+        totalVariance,
+        totalVarianceValue,
+        hasDiscrepancy,
+        conductedBy: userName || 'Unknown',
+        createdAt: serverTimestamp(),
+      });
+
+      if (hasDiscrepancy) {
+        await addDoc(collection(db, 'notifications'), {
+          type: 'STOCK_VARIANCE',
+          message: `🔍 Stock take at ${branch?.name} found variance of ${totalVariance} units (K ${Math.abs(totalVarianceValue).toFixed(2)})`,
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      setShowForm(false);
+      setSelectedBranch('');
+      setCountItems([]);
+    } catch (err) { alert(err.message); }
+    setLoading(false);
+  }
+
+  const filtered = filterBranch
+    ? stockTakes.filter((st) => st.branchId === filterBranch)
+    : stockTakes;
+
+  // Summary stats
+  const totalTakes = stockTakes.length;
+  const takesWithIssues = stockTakes.filter((st) => st.hasDiscrepancy).length;
+  const totalValueAtRisk = stockTakes.reduce((s, st) =>
+    s + Math.abs(st.totalVarianceValue || 0), 0);
+
+  return (
+    <div style={styles.sectionCard}>
+      {/* Summary Stats */}
+      <div style={stStyles.statsRow}>
+        <div style={stStyles.statBox}>
+          <p style={stStyles.statNum}>{totalTakes}</p>
+          <p style={stStyles.statLabel}>Total Stock Takes</p>
+        </div>
+        <div style={stStyles.statBox}>
+          <p style={{ ...stStyles.statNum, color: takesWithIssues > 0 ? '#dc3545' : '#28a745' }}>
+            {takesWithIssues}
+          </p>
+          <p style={stStyles.statLabel}>With Discrepancies</p>
+        </div>
+        <div style={stStyles.statBox}>
+          <p style={{ ...stStyles.statNum, color: '#f39c12' }}>
+            K {totalValueAtRisk.toFixed(2)}
+          </p>
+          <p style={stStyles.statLabel}>Total Variance Value</p>
+        </div>
+        <div style={stStyles.statBox}>
+          <p style={{ ...stStyles.statNum, color: '#28a745' }}>
+            {totalTakes - takesWithIssues}
+          </p>
+          <p style={stStyles.statLabel}>Clean Counts</p>
+        </div>
+      </div>
+
+      {/* Header */}
+      <div style={styles.sectionHeader}>
+        <div>
+          <h3 style={styles.sectionTitle}>🔍 Stock Taking</h3>
+          <p style={styles.sectionSub}>
+            Physical stock counts to verify system records.
+            Discrepancies are flagged and reported automatically.
+          </p>
+        </div>
+        <button style={styles.saveBtn} onClick={() => setShowForm(!showForm)}>
+          + New Stock Count
+        </button>
+      </div>
+
+      {/* New Count Form */}
+      {showForm && (
+        <div style={stStyles.countForm}>
+          <h4 style={stStyles.countFormTitle}>🔍 New Physical Stock Count</h4>
+
+          {!selectedBranch ? (
+            <div>
+              <label style={styles.label}>Select Branch to Count *</label>
+              <div style={stStyles.branchButtons}>
+                {branches.map((b) => (
+                  <button key={b.id}
+                    style={stStyles.branchBtn}
+                    onClick={() => loadBranchStock(b.id)}>
+                    🏪 {b.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={stStyles.countHeader}>
+                <p style={stStyles.countBranch}>
+                  🏪 {branches.find((b) => b.id === selectedBranch)?.name}
+                </p>
+                <button style={stStyles.changeBranchBtn}
+                  onClick={() => { setSelectedBranch(''); setCountItems([]); }}>
+                  Change Branch
+                </button>
+              </div>
+
+              {countItems.length === 0 ? (
+                <div style={styles.empty}>
+                  No stock entries found for this branch.
+                  Add stock in Stock Levels tab first.
+                </div>
+              ) : (
+                <>
+                  <p style={stStyles.countInstruction}>
+                    📋 Enter the ACTUAL physical count for each product below.
+                    The system will automatically calculate variances.
+                  </p>
+                  <div style={styles.tableWrap}>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr style={styles.tableHead}>
+                          <th style={styles.th}>Product</th>
+                          <th style={styles.th}>System Qty</th>
+                          <th style={styles.th}>Actual Count *</th>
+                          <th style={styles.th}>Variance</th>
+                          <th style={styles.th}>Value at Risk</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {countItems.map((item, i) => {
+                          const actual = parseInt(item.actualQty) || 0;
+                          const variance = item.actualQty !== '' ? actual - item.systemQty : null;
+                          const valueAtRisk = variance !== null ? variance * item.buyingPrice : null;
+                          return (
+                            <tr key={item.stockId}
+                              style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                              <td style={{ ...styles.td, fontWeight: '600' }}>
+                                {item.productName}
+                              </td>
+                              <td style={styles.td}>{item.systemQty}</td>
+                              <td style={styles.td}>
+                                <input
+                                  style={stStyles.countInput}
+                                  type="number"
+                                  placeholder="0"
+                                  value={item.actualQty}
+                                  onChange={(e) => updateActualQty(item.stockId, e.target.value)}
+                                />
+                              </td>
+                              <td style={styles.td}>
+                                {variance !== null && (
+                                  <span style={{
+                                    fontWeight: '700',
+                                    color: variance === 0 ? '#28a745'
+                                      : variance > 0 ? '#0f3460' : '#dc3545',
+                                  }}>
+                                    {variance > 0 ? '+' : ''}{variance}
+                                    {variance === 0 ? ' ✅' : variance < 0 ? ' ⚠️' : ' ℹ️'}
+                                  </span>
+                                )}
+                              </td>
+                              <td style={styles.td}>
+                                {valueAtRisk !== null && variance !== 0 && (
+                                  <span style={{
+                                    color: valueAtRisk < 0 ? '#dc3545' : '#0f3460',
+                                    fontWeight: '700',
+                                  }}>
+                                    K {Math.abs(valueAtRisk).toFixed(2)}
+                                    {valueAtRisk < 0 ? ' loss' : ' gain'}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={stStyles.countActions}>
+                    <button style={stStyles.cancelCountBtn}
+                      onClick={() => { setShowForm(false); setSelectedBranch(''); setCountItems([]); }}>
+                      Cancel
+                    </button>
+                    <button
+                      style={loading ? stStyles.submitCountBtnDisabled : stStyles.submitCountBtn}
+                      onClick={handleSubmitCount} disabled={loading}>
+                      {loading ? 'Saving...' : '✅ Submit Stock Count'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filter */}
+      <div style={styles.filterRow}>
+        <select style={styles.filterSelect} value={filterBranch}
+          onChange={(e) => setFilterBranch(e.target.value)}>
+          <option value="">All Branches</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        {filterBranch && (
+          <button style={stStyles.clearBtn} onClick={() => setFilterBranch('')}>
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
+      {/* Stock Take History */}
+      {filtered.length === 0 ? (
+        <div style={styles.empty}>
+          No stock counts yet. Click "New Stock Count" to start.
+        </div>
+      ) : (
+        <div style={stStyles.takesList}>
+          {filtered.map((take) => (
+            <div key={take.id} style={{
+              ...stStyles.takeCard,
+              borderLeft: `4px solid ${take.hasDiscrepancy ? '#dc3545' : '#28a745'}`,
+            }}>
+              <div style={stStyles.takeHeader}>
+                <div>
+                  <p style={stStyles.takeBranch}>{take.branchName}</p>
+                  <p style={stStyles.takeMeta}>
+                    📅 {take.date} · 👤 {take.conductedBy}
+                  </p>
+                </div>
+                <div style={stStyles.takeSummary}>
+                  <span style={{
+                    ...stStyles.takeBadge,
+                    background: take.hasDiscrepancy ? '#fff0f0' : '#e6f9ee',
+                    color: take.hasDiscrepancy ? '#dc3545' : '#28a745',
+                  }}>
+                    {take.hasDiscrepancy ? '⚠️ Variance Found' : '✅ All Good'}
+                  </span>
+                  {take.hasDiscrepancy && (
+                    <span style={stStyles.takeVariance}>
+                      K {Math.abs(take.totalVarianceValue || 0).toFixed(2)} variance
+                    </span>
+                  )}
+                  <button style={stStyles.viewBtn}
+                    onClick={() => setExpandedTake(expandedTake === take.id ? null : take.id)}>
+                    {expandedTake === take.id ? 'Hide' : '👁 View'}
+                  </button>
+                </div>
+              </div>
+
+              {expandedTake === take.id && (
+                <div style={stStyles.takeDetail}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr style={styles.tableHead}>
+                        <th style={styles.th}>Product</th>
+                        <th style={styles.th}>System Qty</th>
+                        <th style={styles.th}>Actual Count</th>
+                        <th style={styles.th}>Variance</th>
+                        <th style={styles.th}>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(take.items || []).map((item, i) => (
+                        <tr key={i} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={{ ...styles.td, fontWeight: '600' }}>
+                            {item.productName}
+                          </td>
+                          <td style={styles.td}>{item.systemQty}</td>
+                          <td style={styles.td}>{item.actualQty}</td>
+                          <td style={{
+                            ...styles.td, fontWeight: '700',
+                            color: item.variance === 0 ? '#28a745'
+                              : item.variance < 0 ? '#dc3545' : '#0f3460',
+                          }}>
+                            {item.variance > 0 ? '+' : ''}{item.variance}
+                          </td>
+                          <td style={{
+                            ...styles.td,
+                            color: item.varianceValue < 0 ? '#dc3545' : '#0f3460',
+                            fontWeight: '700',
+                          }}>
+                            {item.variance !== 0
+                              ? `K ${Math.abs(item.varianceValue || 0).toFixed(2)} ${item.varianceValue < 0 ? 'loss' : 'gain'}`
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={styles.totalRow}>
+                        <td colSpan="3" style={{ ...styles.td, fontWeight: '800' }}>TOTAL VARIANCE</td>
+                        <td style={{
+                          ...styles.td, fontWeight: '800',
+                          color: take.totalVariance < 0 ? '#dc3545' : take.totalVariance > 0 ? '#0f3460' : '#28a745',
+                        }}>
+                          {take.totalVariance > 0 ? '+' : ''}{take.totalVariance} units
+                        </td>
+                        <td style={{
+                          ...styles.td, fontWeight: '800',
+                          color: take.totalVarianceValue < 0 ? '#dc3545' : '#0f3460',
+                        }}>
+                          K {Math.abs(take.totalVarianceValue || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const stStyles = {
+  statsRow: { display: 'flex', gap: '16px', marginBottom: '20px' },
+  statBox: { background: 'white', borderRadius: '10px', padding: '16px 24px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', minWidth: '120px' },
+  statNum: { fontSize: '24px', fontWeight: '800', color: '#0f3460', margin: 0 },
+  statLabel: { fontSize: '11px', color: '#888', margin: '4px 0 0' },
+  countForm: { background: '#f0f4ff', borderRadius: '12px', padding: '20px', marginBottom: '20px', border: '1px solid #d0e0ff' },
+  countFormTitle: { fontSize: '16px', fontWeight: '700', color: '#0f3460', margin: '0 0 16px' },
+  branchButtons: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' },
+  branchBtn: { padding: '10px 20px', background: 'white', border: '2px solid #d0e0ff', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', color: '#0f3460', fontWeight: '600' },
+  countHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' },
+  countBranch: { fontSize: '16px', fontWeight: '800', color: '#0f3460', margin: 0 },
+  changeBranchBtn: { padding: '6px 14px', background: '#fff', border: '1px solid #d0e0ff', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', color: '#0f3460' },
+  countInstruction: { fontSize: '13px', color: '#555', background: 'white', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #e0e0e0' },
+  countInput: { width: '80px', padding: '6px 8px', borderRadius: '6px', border: '2px solid #e0e0e0', fontSize: '13px', outline: 'none' },
+  countActions: { display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' },
+  cancelCountBtn: { padding: '10px 20px', background: '#f0f0f0', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', color: '#666' },
+  submitCountBtn: { padding: '10px 24px', background: 'linear-gradient(135deg, #0f3460, #e94560)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '700' },
+  submitCountBtnDisabled: { padding: '10px 24px', background: '#ccc', color: 'white', border: 'none', borderRadius: '8px', cursor: 'not-allowed', fontSize: '14px' },
+  filterRow: { display: 'flex', gap: '12px', marginBottom: '16px' },
+  clearBtn: { padding: '8px 16px', background: '#fff0f0', color: '#dc3545', border: '1px solid #ffcccc', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
+  takesList: { display: 'flex', flexDirection: 'column', gap: '12px' },
+  takeCard: { background: '#fafafa', borderRadius: '10px', padding: '16px', border: '1px solid #f0f0f0' },
+  takeHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+  takeBranch: { fontSize: '16px', fontWeight: '700', color: '#1a1a2e', margin: 0 },
+  takeMeta: { fontSize: '12px', color: '#888', margin: '4px 0 0' },
+  takeSummary: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' },
+  takeBadge: { padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' },
+  takeVariance: { fontSize: '13px', fontWeight: '700', color: '#dc3545' },
+  viewBtn: { padding: '5px 12px', background: '#f0f4ff', color: '#0f3460', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' },
+  takeDetail: { marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e0e0e0' },
+};
 
 // ─── STYLES ───────────────────────────────────────────────
 const styles = {
