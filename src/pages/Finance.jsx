@@ -1394,115 +1394,129 @@ function InvestmentTracker() {
           </div>
 
           {/* Per Branch Auto Cards */}
-          <div style={invStyles.branchGrid}>
-            {branches.map((branch) => {
-              const m = getBranchAutoMetrics(branch.id);
-              const profitColor = m.netProfitSoFar >= 0 ? '#28a745' : '#dc3545';
-              return (
-                <div key={branch.id} style={invStyles.autoBranchCard}>
-                  {/* Header */}
-                  <div style={invStyles.autoBranchHeader}>
-                    <span style={invStyles.autoBranchIcon}>🏪</span>
-                    <div style={{ flex: 1 }}>
-                      <p style={invStyles.autoBranchName}>{branch.name}</p>
-                      <p style={invStyles.autoBranchSub}>{m.reportCount} reports</p>
-                    </div>
-                    <span style={{
-                      ...invStyles.autoBranchScore,
-                      color: m.accountabilityPct >= 70 ? '#28a745' : '#f39c12',
-                    }}>
-                      {m.accountabilityPct.toFixed(0)}%
-                    </span>
-                  </div>
+<div style={invStyles.branchGrid}>
+  {branches.map((branch, rank) => {
+    const m = getBranchAutoMetrics(branch.id);
+    const profitColor = m.netProfitSoFar >= 0 ? '#28a745' : '#dc3545';
+    const accColor = m.accountabilityPct >= 90 ? '#28a745'
+      : m.accountabilityPct >= 70 ? '#f39c12'
+      : m.accountabilityPct >= 50 ? '#ff6b35' : '#dc3545';
 
-                  {/* Stock Position */}
-                  <div style={invStyles.autoSection}>
-                    <p style={invStyles.autoSectionTitle}>📦 Stock Position</p>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Stock at Cost</span>
-                      <span style={invStyles.autoValue}>K {m.stockAtCost.toFixed(2)}</span>
-                    </div>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Stock at Sell Price</span>
-                      <span style={{ ...invStyles.autoValue, color: '#28a745' }}>
-                        K {m.stockAtSellPrice.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Potential Profit</span>
-                      <span style={{ ...invStyles.autoValue, color: '#0f3460', fontWeight: '800' }}>
-                        K {m.potentialProfit.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Revenue & Costs */}
-                  <div style={invStyles.autoSection}>
-                    <p style={invStyles.autoSectionTitle}>💰 Revenue & Costs</p>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Revenue Collected</span>
-                      <span style={{ ...invStyles.autoValue, color: '#0f3460' }}>
-                        K {m.revenueCollected.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Daily Expenses</span>
-                      <span style={{ ...invStyles.autoValue, color: '#e94560' }}>
-                        - K {m.dailyExpenses.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Salaries</span>
-                      <span style={{ ...invStyles.autoValue, color: '#e94560' }}>
-                        - K {m.totalSalaries.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={{ ...invStyles.autoRow, borderTop: '1px solid #eee', paddingTop: '6px', marginTop: '4px' }}>
-                      <span style={{ ...invStyles.autoLabel, fontWeight: '700' }}>Net Profit So Far</span>
-                      <span style={{ ...invStyles.autoValue, color: profitColor, fontWeight: '800', fontSize: '15px' }}>
-                        K {m.netProfitSoFar.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Cash Position */}
-                  <div style={invStyles.autoSection}>
-                    <p style={invStyles.autoSectionTitle}>🏦 Cash Position</p>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Cash to HQ</span>
-                      <span style={{ ...invStyles.autoValue, color: '#28a745' }}>
-                        K {m.cashToHQ.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={invStyles.autoRow}>
-                      <span style={invStyles.autoLabel}>Total Operating Costs</span>
-                      <span style={{ ...invStyles.autoValue, color: '#e94560' }}>
-                        K {m.totalOperatingCosts.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Accountability Bar */}
-                  <div style={invStyles.accRow}>
-                    <span style={invStyles.accLabel}>Accountability</span>
-                    <span style={{
-                      ...invStyles.accPct,
-                      color: m.accountabilityPct >= 70 ? '#28a745' : '#f39c12'
-                    }}>
-                      {m.accountabilityPct.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div style={invStyles.accBar}>
-                    <div style={{
-                      ...invStyles.accBarFill,
-                      width: `${m.accountabilityPct}%`,
-                      background: m.accountabilityPct >= 70 ? '#28a745' : '#f39c12',
-                    }} />
-                  </div>
-                </div>
-              );
-            })}
+    return (
+      <div key={branch.id} style={{
+        ...invStyles.autoBranchCard,
+        borderTop: `4px solid ${accColor}`,
+      }}>
+        {/* Card Header */}
+        <div style={invStyles.autoBranchHeader}>
+          <div style={invStyles.autoBranchIcon}>
+            {rank === 0 ? '🥇' : rank === 1 ? '🥈' : '🥉'}
           </div>
+          <div style={{ flex: 1 }}>
+            <p style={invStyles.autoBranchName}>{branch.name}</p>
+            <p style={{ ...invStyles.autoBranchSub, color: accColor, fontWeight: '700' }}>
+              {m.accountabilityPct >= 90 ? '🟢 Excellent'
+                : m.accountabilityPct >= 70 ? '🟡 Good'
+                : m.accountabilityPct >= 50 ? '🟠 Needs Attention'
+                : '🔴 Critical'}
+            </p>
+          </div>
+          <div style={{ ...invStyles.autoBranchScore, color: accColor }}>
+            {m.accountabilityPct.toFixed(0)}%
+          </div>
+        </div>
+
+        {/* Stock Position */}
+        <div style={invStyles.metricSection}>
+          <p style={invStyles.metricSectionTitle}>📦 STOCK POSITION</p>
+          {[
+            { label: 'Stock at Cost', value: `K ${m.stockAtCost.toFixed(2)}`, color: '#1a1a2e' },
+            { label: 'Stock at Sell Price', value: `K ${m.stockAtSellPrice.toFixed(2)}`, color: '#28a745' },
+            { label: 'Potential Profit', value: `K ${m.potentialProfit.toFixed(2)}`, color: '#0f3460', bold: true },
+          ].map((item, i) => (
+            <div key={i} style={invStyles.metricRow}>
+              <span style={invStyles.metricLabel}>{item.label}</span>
+              <span style={{ ...invStyles.metricValue, color: item.color, fontWeight: item.bold ? '800' : '600' }}>
+                {item.value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Revenue & Costs */}
+        <div style={invStyles.metricSection}>
+          <p style={invStyles.metricSectionTitle}>💰 REVENUE & COSTS</p>
+          {[
+            { label: 'Revenue Collected', value: `K ${m.revenueCollected.toFixed(2)}`, color: '#0f3460' },
+            { label: 'Daily Expenses', value: `- K ${m.dailyExpenses.toFixed(2)}`, color: '#e94560' },
+            { label: 'Salaries', value: `- K ${m.totalSalaries.toFixed(2)}`, color: '#e94560' },
+          ].map((item, i) => (
+            <div key={i} style={invStyles.metricRow}>
+              <span style={invStyles.metricLabel}>{item.label}</span>
+              <span style={{ ...invStyles.metricValue, color: item.color }}>
+                {item.value}
+              </span>
+            </div>
+          ))}
+          <div style={invStyles.metricDivider} />
+          <div style={invStyles.metricRow}>
+            <span style={{ ...invStyles.metricLabel, fontWeight: '700', color: '#1a1a2e' }}>
+              Net Profit So Far
+            </span>
+            <span style={{ ...invStyles.metricValue, color: profitColor, fontWeight: '800', fontSize: '15px' }}>
+              K {m.netProfitSoFar.toFixed(2)}
+            </span>
+          </div>
+        </div>
+
+        {/* Cash Position */}
+        <div style={invStyles.metricSection}>
+          <p style={invStyles.metricSectionTitle}>🏦 CASH POSITION</p>
+          {[
+            { label: 'Cash to HQ', value: `K ${m.cashToHQ.toFixed(2)}`, color: '#28a745' },
+            { label: 'Total Operating Costs', value: `K ${m.totalOperatingCosts.toFixed(2)}`, color: '#e94560' },
+            { label: 'Reports Submitted', value: `${m.reportCount} reports`, color: '#888' },
+          ].map((item, i) => (
+            <div key={i} style={invStyles.metricRow}>
+              <span style={invStyles.metricLabel}>{item.label}</span>
+              <span style={{ ...invStyles.metricValue, color: item.color }}>
+                {item.value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Accountability Score Bar */}
+        <div style={invStyles.scoreSection}>
+          <div style={invStyles.scoreHeader}>
+            <span style={invStyles.scoreLabel}>Accountability Score</span>
+            <span style={{ ...invStyles.scorePct, color: accColor }}>
+              {m.accountabilityPct.toFixed(1)}%
+            </span>
+          </div>
+          <div style={invStyles.scoreBar}>
+            <div style={{
+              ...invStyles.scoreBarFill,
+              width: `${m.accountabilityPct}%`,
+              background: accColor,
+            }} />
+          </div>
+
+          {/* Alert */}
+          {m.accountabilityPct < 70 && (
+            <div style={invStyles.alertBox}>
+              <p style={{ ...invStyles.alertText, color: m.accountabilityPct < 50 ? '#dc3545' : '#f39c12' }}>
+                {m.accountabilityPct < 50
+                  ? '🚨 Critical: Immediate investigation required'
+                  : '⚠️ Below target: Review with branch manager'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  })}
+</div>
         </div>
       )}
 
@@ -2012,25 +2026,20 @@ const invStyles = {
   previewItem: { textAlign: 'center' },
   previewLabel: { fontSize: '11px', color: '#888', margin: '0 0 4px' },
   previewValue: { fontSize: '14px', fontWeight: '700', color: '#1a1a2e', margin: 0 },
-  investmentGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' },
-  investmentCard: { background: '#fafafa', borderRadius: '12px', padding: '20px', border: '1px solid #f0f0f0' },
-  invCardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' },
-  invBranchName: { fontSize: '18px', fontWeight: '800', color: '#1a1a2e', margin: 0 },
-  invDate: { fontSize: '12px', color: '#aaa', margin: '4px 0 0' },
-  invHeaderRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' },
-  statusBadge: { padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' },
-  invSection: { background: 'white', borderRadius: '8px', padding: '12px', marginBottom: '10px', border: '1px solid #f0f0f0' },
-  invSectionTitle: { fontSize: '12px', fontWeight: '700', color: '#0f3460', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.5px' },
-  invRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f8f8f8' },
-  invLabel: { fontSize: '13px', color: '#666' },
-  invValue: { fontSize: '13px', fontWeight: '600', color: '#1a1a2e' },
-  progressSection: { marginBottom: '12px' },
-  progressHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' },
-  progressLabel: { fontSize: '12px', color: '#888' },
-  progressPct: { fontSize: '12px', fontWeight: '700' },
-  progressBar: { height: '8px', background: '#f0f0f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' },
-  progressFill: { height: '100%', borderRadius: '4px', transition: 'width 0.4s ease' },
-  closeBtn: { width: '100%', padding: '10px', background: '#f0f4ff', color: '#0f3460', border: '1px solid #d0e0ff', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
+  metricSection: { background: '#fafafa', borderRadius: '8px', padding: '12px 14px', marginBottom: '10px', border: '1px solid #f0f0f0' },
+  metricSectionTitle: { fontSize: '10px', fontWeight: '800', color: '#0f3460', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.8px' },
+  metricRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f8f8f8' },
+  metricLabel: { fontSize: '12px', color: '#666' },
+  metricValue: { fontSize: '13px', fontWeight: '600', color: '#1a1a2e' },
+  metricDivider: { borderTop: '1px solid #e0e0e0', margin: '6px 0' },
+  scoreSection: { marginTop: '4px' },
+  scoreHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: '6px' },
+  scoreLabel: { fontSize: '12px', color: '#888', fontWeight: '600' },
+  scorePct: { fontSize: '13px', fontWeight: '800' },
+  scoreBar: { height: '8px', background: '#f0f0f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' },
+  scoreBarFill: { height: '100%', borderRadius: '4px', transition: 'width 0.4s ease' },
+  alertBox: { background: '#fff8e1', borderRadius: '6px', padding: '8px 12px', border: '1px solid #ffe082' },
+  alertText: { fontSize: '12px', fontWeight: '600', margin: 0 },
 };
 
 const accStyles = {
