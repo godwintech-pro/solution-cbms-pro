@@ -397,7 +397,7 @@ export default function Dashboard() {
         </nav>
 
         <button style={styles.logoutBtn} onClick={handleLogout} title="Logout">
-          🚪{sidebarOpen && ' Logout'}
+          🚪{sidebarOpen && <span>Logout</span>}
         </button>
       </div>
 
@@ -468,7 +468,7 @@ const styles = {
   navItemAdmin: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '10px 14px', background: 'rgba(220,53,69,0.1)', border: '1px solid rgba(220,53,69,0.3)', color: '#ff6b6b', fontSize: '13px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', width: '100%', whiteSpace: 'nowrap' },
   navItemAdminActive: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '10px 14px', background: 'rgba(220,53,69,0.3)', border: '1px solid rgba(220,53,69,0.6)', color: 'white', fontSize: '13px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', width: '100%', whiteSpace: 'nowrap', fontWeight: '700' },
   navIcon: { fontSize: '18px', flexShrink: 0 },
-  logoutBtn: { margin: '10px', padding: '10px', background: 'rgba(233,69,96,0.2)', border: '1px solid rgba(233,69,96,0.4)', color: '#e94560', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden' },
+  logoutBtn: { margin: '10px', padding: '10px', background: 'rgba(233,69,96,0.2)', border: '1px solid rgba(233,69,96,0.4)', color: '#e94560', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', textAlign: 'center' },
   main: { flex: 1, padding: '30px', transition: 'margin-left 0.3s ease', minWidth: 0 },
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '30px' },
   pageTitle: { fontSize: '24px', fontWeight: '800', color: '#1a1a2e', margin: 0 },
