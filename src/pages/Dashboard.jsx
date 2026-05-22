@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
 import {
   collection, onSnapshot, query,
-  orderBy, limit,
+  orderBy, limit, doc, getDoc,
 } from 'firebase/firestore';
 import Branches from './Branches';
 import Inventory from './Inventory';
@@ -296,6 +296,8 @@ export default function Dashboard() {
   const [activeModule, setActiveModule] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notifCount, setNotifCount] = useState(0);
+const [companyName, setCompanyName] = useState('Solution Enterprises');
+const [companyTagline, setCompanyTagline] = useState('Business Management');
 
   async function handleLogout() {
     await logout();
@@ -309,24 +311,48 @@ export default function Dashboard() {
     );
     return unsub;
   }, []);
+  
+  useEffect(() => {
+    async function loadCompanySettings() {
+      try {
+        const docSnap = await getDoc(doc(db, 'systemSettings', 'config'));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.companyName) setCompanyName(data.companyName);
+        }
+      } catch (err) { console.error(err); }
+    }
+    loadCompanySettings();
+  }, []);
 
   const allModules = [
-    { id: 'overview', icon: '📊', label: 'Overview' },
-    { id: 'branches', icon: '🏪', label: 'Branches' },
-    { id: 'inventory', icon: '📦', label: 'Inventory' },
-    { id: 'expiry', icon: '⚠️', label: 'Expiry' },
-    { id: 'reports', icon: '📋', label: 'Reports' },
-    { id: 'orders', icon: '🛒', label: 'Orders' },
-    { id: 'finance', icon: '💰', label: 'Finance' },
-    { id: 'users', icon: '👥', label: 'User Management' },
-    { id: 'messages', icon: '💬', label: 'Messages' },
-    { id: 'analytics', icon: '📈', label: 'Analytics' },
-    { id: 'admin', icon: '⚙️', label: 'Admin', adminOnly: true },
+    { id: 'overview', icon: '📊', label: 'Overview',
+      roles: ['Super Admin', 'Branch Manager', 'Store Personnel', 'Finance Staff', 'Procurement Team'] },
+    { id: 'branches', icon: '🏪', label: 'Branches',
+      roles: ['Super Admin'] },
+    { id: 'inventory', icon: '📦', label: 'Inventory',
+      roles: ['Super Admin', 'Branch Manager', 'Store Personnel', 'Procurement Team'] },
+    { id: 'expiry', icon: '⚠️', label: 'Expiry',
+      roles: ['Super Admin', 'Branch Manager', 'Store Personnel', 'Procurement Team'] },
+    { id: 'reports', icon: '📋', label: 'Reports',
+      roles: ['Super Admin', 'Branch Manager', 'Finance Staff'] },
+    { id: 'orders', icon: '🛒', label: 'Orders',
+      roles: ['Super Admin', 'Branch Manager', 'Store Personnel', 'Procurement Team'] },
+    { id: 'finance', icon: '💰', label: 'Finance',
+      roles: ['Super Admin', 'Finance Staff'] },
+    { id: 'users', icon: '👥', label: 'User Management',
+      roles: ['Super Admin'] },
+    { id: 'messages', icon: '💬', label: 'Messages',
+      roles: ['Super Admin', 'Branch Manager', 'Store Personnel', 'Finance Staff', 'Procurement Team'] },
+    { id: 'analytics', icon: '📈', label: 'Analytics',
+      roles: ['Super Admin'] },
+    { id: 'admin', icon: '⚙️', label: 'Admin',
+      roles: ['Super Admin'] },
   ];
-
+  
   // Filter sidebar modules by role
   const modules = allModules.filter((m) =>
-    !m.adminOnly || userRole === 'Super Admin'
+    !userRole || m.roles.includes(userRole)
   );
 
   const sidebarWidth = sidebarOpen ? '240px' : '60px';
@@ -345,14 +371,14 @@ export default function Dashboard() {
         </button>
 
         {sidebarOpen && (
-          <div style={styles.sidebarHeader}>
-            <div style={styles.sidebarLogo}>📊</div>
-            <div>
-              <p style={styles.sidebarTitle}>CBMS</p>
-              <p style={styles.sidebarSub}>Solution Enterprises</p>
-            </div>
-          </div>
-        )}
+  <div style={styles.sidebarHeader}>
+    <div style={styles.sidebarLogo}>📊</div>
+    <div>
+      <p style={styles.sidebarTitle}>CBMS</p>
+      <p style={styles.sidebarSub}>{companyName}</p>
+    </div>
+  </div>
+)}
 
         {!sidebarOpen && (
           <div style={styles.sidebarHeaderCollapsed}>
@@ -455,7 +481,7 @@ const styles = {
   sidebarHeaderCollapsed: { display: 'flex', justifyContent: 'center', padding: '0 0 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' },
   sidebarLogo: { fontSize: '28px' },
   sidebarTitle: { color: 'white', fontWeight: '800', fontSize: '18px', margin: 0 },
-  sidebarSub: { color: '#e94560', fontSize: '10px', margin: 0 },
+  sidebarSub: { color: '#e94560', fontSize: '13px', fontWeight: '600', margin: 0, lineHeight: '1.3' },
   userCard: { display: 'flex', alignItems: 'center', gap: '10px', padding: '15px 20px', margin: '15px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' },
   userAvatarCollapsed: { width: '36px', height: '36px', borderRadius: '50%', background: '#e94560', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px', margin: '12px auto' },
   userAvatar: { width: '38px', height: '38px', borderRadius: '50%', background: '#e94560', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '16px', flexShrink: 0 },
