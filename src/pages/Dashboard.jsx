@@ -354,11 +354,6 @@ const [companyTagline, setCompanyTagline] = useState('Business Management');
   const modules = allModules.filter((m) =>
     !userRole || m.roles.includes(userRole)
   );
-  
-  // Filter sidebar modules by role
-  const modules = allModules.filter((m) =>
-    !userRole || m.roles.includes(userRole)
-  );
 
   const sidebarWidth = sidebarOpen ? '240px' : '60px';
 
